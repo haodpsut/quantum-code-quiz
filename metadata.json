@@ -1,0 +1,5 @@
+{
+  "name": "Quantum Code Quiz",
+  "description": "An interactive quiz application to learn and test your knowledge of Quantum Machine Learning. It uses the Gemini API to generate coding questions in real-time.",
+  "requestFramePermissions": []
+}
