@@ -30,12 +30,16 @@ Start generating the questions now.
 `;
 
 export async function* generateQuizQuestionsStream(): AsyncGenerator<QuizQuestion, void, undefined> {
-  // The API key check is now handled by the UI flow before this function is called.
-  // A new instance is created on each call to ensure the latest key is used.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = localStorage.getItem('gemini_api_key');
+  if (!apiKey) {
+    // This is a safeguard; the UI should prevent this function from being called without a key.
+    throw new Error("API key not found. Please set your API key.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   const stream = await ai.models.generateContentStream({
-    model: 'gemini-2.5-pro', // Using Pro for better JSON generation and code snippets
+    model: 'gemini-2.5-pro',
     contents: PROMPT,
   });
 

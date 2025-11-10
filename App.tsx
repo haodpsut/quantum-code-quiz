@@ -4,20 +4,6 @@ import { generateQuizQuestionsStream } from './services/geminiService';
 import QuizCard from './components/QuizCard';
 import { BrainIcon, CodeIcon } from './components/Icons';
 
-// Fix: The previous global declaration for `window.aistudio` used an anonymous
-// type, which caused a conflict with an existing declaration. By using a named
-// interface `AIStudio`, we enable TypeScript's declaration merging and resolve
-// the error.
-declare global {
-    interface AIStudio {
-        hasSelectedApiKey: () => Promise<boolean>;
-        openSelectKey: () => Promise<void>;
-    }
-    interface Window {
-        aistudio: AIStudio;
-    }
-}
-
 type QuizState = 'idle' | 'loading' | 'active' | 'finished' | 'error';
 
 const TOTAL_QUESTIONS_TARGET = 50;
@@ -33,14 +19,18 @@ interface ApiKeySetupProps {
     error: string | null;
 }
 const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onKeySet, error }) => {
-    const handleSetupClick = async () => {
-        await window.aistudio.openSelectKey();
-        onKeySet();
+    const [apiKey, setApiKey] = useState('');
+
+    const handleSaveKey = () => {
+        if (apiKey.trim()) {
+            localStorage.setItem('gemini_api_key', apiKey.trim());
+            onKeySet();
+        }
     };
 
     return (
         <div className="text-center bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-md mx-auto border border-gray-700">
-            <h2 className="text-3xl font-bold text-purple-400 mb-4">Setup Gemini API Key</h2>
+            <h2 className="text-3xl font-bold text-purple-400 mb-4">Enter Gemini API Key</h2>
             {error && (
                 <div className="bg-red-900/50 border border-red-500 p-4 rounded-lg mb-6 text-red-300 text-left text-sm">
                     <p className="font-bold mb-2">Setup Error</p>
@@ -48,21 +38,33 @@ const ApiKeySetup: React.FC<ApiKeySetupProps> = ({ onKeySet, error }) => {
                 </div>
             )}
             <p className="text-gray-300 mb-6">
-                To generate quiz questions, this application requires a Gemini API key.
+                To generate quiz questions, please provide your Gemini API key. Your key will be stored in your browser's local storage.
             </p>
-            <button
-                onClick={handleSetupClick}
-                className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors mb-4"
-            >
-                Select API Key
-            </button>
+            <div className="flex flex-col gap-4">
+                <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && apiKey.trim()) handleSaveKey(); }}
+                    placeholder="Enter your API key here"
+                    className="w-full px-4 py-3 bg-gray-900 border-2 border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"
+                    aria-label="Gemini API Key Input"
+                />
+                <button
+                    onClick={handleSaveKey}
+                    disabled={!apiKey.trim()}
+                    className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                >
+                    Save Key and Continue
+                </button>
+            </div>
             <a
-                href="https://ai.google.dev/gemini-api/docs/billing"
+                href="https://ai.google.dev/gemini-api/docs/api-key"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-gray-400 hover:text-purple-400 transition-colors"
+                className="text-sm text-gray-400 hover:text-purple-400 transition-colors mt-4 inline-block"
             >
-                Learn more about API keys and billing
+                Learn how to get an API key
             </a>
         </div>
     );
@@ -123,18 +125,16 @@ const App: React.FC = () => {
     const [isCheckingKey, setIsCheckingKey] = useState<boolean>(true);
 
     useEffect(() => {
-        const checkApiKey = async () => {
-            try {
-                const hasKey = await window.aistudio.hasSelectedApiKey();
-                setIsKeySet(hasKey);
-            } catch (e) {
-                console.error("Error checking for API key:", e);
-                setIsKeySet(false);
-            } finally {
-                setIsCheckingKey(false);
+        try {
+            const storedKey = localStorage.getItem('gemini_api_key');
+            if (storedKey) {
+                setIsKeySet(true);
             }
-        };
-        checkApiKey();
+        } catch (e) {
+            console.error("Could not access localStorage:", e);
+        } finally {
+            setIsCheckingKey(false);
+        }
     }, []);
 
     const startQuiz = useCallback(async () => {
@@ -151,14 +151,16 @@ const App: React.FC = () => {
             }
         } catch (err) {
             console.error(err);
-            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+            const errorMessage = err instanceof Error ? err.message : String(err);
             
-            if (errorMessage.includes("API key not valid")) {
-                setError("Your API key appears to be invalid. Please select a new one to continue.");
+            // If the key is invalid, clear it and send the user back to the setup screen.
+            if (errorMessage.toLowerCase().includes("api key") || errorMessage.includes("permission denied") || errorMessage.includes("was not found")) {
+                setError("Your API key is invalid or permissions are incorrect. Please enter a valid one to continue.");
+                localStorage.removeItem('gemini_api_key');
                 setIsKeySet(false);
-                setQuizState('idle'); // Reset state to force re-render to the key setup
+                setQuizState('idle');
             } else {
-                setError(errorMessage);
+                setError(`An error occurred while generating questions: ${errorMessage}`);
                 setQuizState('error');
             }
         }
